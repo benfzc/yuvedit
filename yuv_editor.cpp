@@ -10,37 +10,22 @@ using namespace cv;
 #define DEFAULT_INPUT_IMAGE_HEIGHT (3040)
 #define DEFAULT_INPUT_IMAGE_WIDTH (4056)
 
-#define YUV420P_HEIGHT(mat) (mat.rows * 2 / 3)
-#define YUV420P_WIDTH(mat) (mat.cols)
+#define YUV_420_HEIGHT(mat) (mat.rows * 2 / 3)
+#define YUV_420_WIDTH(mat) (mat.cols)
 
-bool load_yuv_420p10b(const char *filename, Mat &yuv, int height, int width)
+bool load_yuv_420_10b(const char *filename, Mat &yuv, int height, int width)
 {
   yuv = Mat(height * 3 / 2, width, CV_16UC1, Scalar(0));
 
   std::ifstream fin(filename, std::ios::in | std::ios::binary);
   if (fin)
   {
-    size_t y_byte = width * height * sizeof(unsigned short);
-    size_t u_byte = width * height * sizeof(unsigned short) / 4;
+    size_t byte = width * height * sizeof(unsigned short) * 3 / 2;
 
-    fin.read(reinterpret_cast<char *>(yuv.data), y_byte);
+    fin.read(reinterpret_cast<char *>(yuv.data), byte);
     if (!fin)
     {
-      std::cout << "read y failure, only " << fin.gcount() << " could be read, expect " << y_byte << " byte\n";
-      goto load_fail;
-    }
-
-    fin.read(reinterpret_cast<char *>(yuv.data + y_byte), u_byte);
-    if (!fin)
-    {
-      std::cout << "read u failure, only " << fin.gcount() << " could be read, expect " << u_byte << " byte\n";
-      goto load_fail;
-    }
-
-    fin.read(reinterpret_cast<char *>(yuv.data + y_byte + u_byte), u_byte);
-    if (!fin)
-    {
-      std::cout << "read u failure, only " << fin.gcount() << " could be read, expect " << u_byte << " byte\n";
+      std::cout << "read yuv failure, only " << fin.gcount() << " could be read, expect " << byte << " byte\n";
       goto load_fail;
     }
 
@@ -52,11 +37,14 @@ bool load_yuv_420p10b(const char *filename, Mat &yuv, int height, int width)
     std::cout << "open " << filename << " fail\n";
   }
 load_fail:
-  fin.close();
+  if (fin)
+  {
+    fin.close();
+  }
   return false;
 }
 
-bool show_yuv_420p16b(Mat &yuv16b, int height, int width, const char *title)
+bool show_yuv_420p_16b(Mat &yuv16b, int height, int width, const char *title)
 {
   Mat yuv8b;
   yuv16b.convertTo(yuv8b, CV_8UC1, 1 / 256.);
@@ -66,16 +54,30 @@ bool show_yuv_420p16b(Mat &yuv16b, int height, int width, const char *title)
   namedWindow(title, WINDOW_NORMAL);
   resizeWindow(title, 1280, 720);
   imshow(title, bgr);
-  //waitKey(0);
+
   return true;
 }
 
-bool save_yuv_420p10b(const char *filename, Mat &yuv)
+bool show_yuv_420sp_16b(Mat &yuv16b, int height, int width, const char *title)
+{
+  Mat yuv8b;
+  yuv16b.convertTo(yuv8b, CV_8UC1, 1 / 256.);
+
+  Mat bgr;
+  cvtColor(yuv8b, bgr, COLOR_YUV2BGR_NV12);
+  namedWindow(title, WINDOW_NORMAL);
+  resizeWindow(title, 1280, 720);
+  imshow(title, bgr);
+
+  return true;
+}
+
+bool save_yuv_420_10b(const char *filename, Mat &yuv)
 {
   std::ofstream fout(filename, std::ios::out | std::ios::binary);
   if (fout)
   {
-    fout.write(reinterpret_cast<char *>(yuv.data), YUV420P_HEIGHT(yuv) * YUV420P_WIDTH(yuv) * 3 / 2 * sizeof(unsigned short));
+    fout.write(reinterpret_cast<char *>(yuv.data), YUV_420_HEIGHT(yuv) * YUV_420_WIDTH(yuv) * 3 / 2 * sizeof(unsigned short));
     fout.close();
   }
   else
@@ -87,10 +89,10 @@ bool save_yuv_420p10b(const char *filename, Mat &yuv)
   return true;
 }
 
-bool zoom_yuv_420p16b(const Mat &input, const Rect &roi, Mat &output)
+bool zoom_yuv_420p_16b(const Mat &input, const Rect &roi, Mat &output)
 {
-  size_t height = YUV420P_HEIGHT(input);
-  size_t width = YUV420P_WIDTH(input);
+  size_t height = YUV_420_HEIGHT(input);
+  size_t width = YUV_420_WIDTH(input);
   size_t y_byte = height * width * sizeof(unsigned short);
   size_t u_byte = y_byte >> 2;
 
@@ -112,7 +114,49 @@ bool zoom_yuv_420p16b(const Mat &input, const Rect &roi, Mat &output)
   return true;
 }
 
-bool edit_yuv_batch_420p12b(const char *in_filename, const char *out_filename, size_t in_height, size_t in_width, Rect roi)
+bool zoom_yuv_420sp_16b(const Mat &input, const Rect &roi, Mat &output)
+{
+  size_t height = YUV_420_HEIGHT(input);
+  size_t width = YUV_420_WIDTH(input);
+  size_t y_byte = height * width * sizeof(unsigned short);
+  size_t uv_byte = y_byte >> 1;
+
+  Mat y(height, width, CV_16UC1, input.data);
+  Mat uv(height >> 1, width >> 1, CV_16UC2, input.data + y_byte);
+
+  Rect uv_roi = Rect(roi.x / 2, roi.y / 2, roi.width / 2, roi.height / 2);
+
+  Mat resized_y, resized_uv;
+  resize(y(roi), resized_y, y.size(), 0, 0, INTER_CUBIC);
+  resize(uv(uv_roi), resized_uv, uv.size(), 0, 0, INTER_CUBIC);
+
+  output = Mat(input.rows, input.cols, CV_16UC1);
+  memcpy(output.data, resized_y.data, y_byte);
+  memcpy(output.data + y_byte, resized_uv.data, uv_byte);
+  return true;
+}
+
+typedef struct
+{
+  bool (*load_yuv)(const char *filename, Mat &yuv, int height, int width);
+  bool (*zoom_yuv)(const Mat &input, const Rect &roi, Mat &output);
+  bool (*save_yuv)(const char *filename, Mat &yuv);
+  bool (*show_yuv)(Mat &yuv16b, int height, int width, const char *title);
+} YUV_OPS;
+
+YUV_OPS yuv420p_ops = {
+    .load_yuv = load_yuv_420_10b,
+    .zoom_yuv = zoom_yuv_420p_16b,
+    .save_yuv = save_yuv_420_10b,
+    .show_yuv = show_yuv_420p_16b};
+
+YUV_OPS yuv420sp_ops = {
+    .load_yuv = load_yuv_420_10b,
+    .zoom_yuv = zoom_yuv_420sp_16b,
+    .save_yuv = save_yuv_420_10b,
+    .show_yuv = show_yuv_420sp_16b};
+
+bool edit_yuv_batch_420_10b(const char *in_filename, const char *out_filename, size_t in_height, size_t in_width, Rect roi, YUV_OPS *ops)
 {
   if (roi.x < 0 || roi.y < 0 || roi.width <= 4 || roi.height <= 4 || (roi.x + roi.width) >= in_width || (roi.y + roi.height) >= in_height)
   {
@@ -121,23 +165,23 @@ bool edit_yuv_batch_420p12b(const char *in_filename, const char *out_filename, s
   }
 
   Mat yuv_in;
-  if (load_yuv_420p10b(in_filename, yuv_in, in_height, in_width) == false)
+  if (ops->load_yuv(in_filename, yuv_in, in_height, in_width) == false)
   {
     return false;
   }
 
   Mat yuv_out;
-  zoom_yuv_420p16b(yuv_in, roi, yuv_out);
-  save_yuv_420p10b(out_filename, yuv_out);
+  ops->zoom_yuv(yuv_in, roi, yuv_out);
+  ops->save_yuv(out_filename, yuv_out);
   printf("save image with roi (%d, %d, %d, %d) to file %s\n", roi.x, roi.y, roi.width, roi.height, out_filename);
 
   return true;
 }
 
-bool edit_yuv_420p12b(const char *in_filename, const char *out_filename, size_t in_height, size_t in_width)
+bool edit_yuv_420_10b(const char *in_filename, const char *out_filename, size_t in_height, size_t in_width, YUV_OPS *ops)
 {
   Mat yuv_in;
-  if (load_yuv_420p10b(in_filename, yuv_in, in_height, in_width) == false)
+  if (ops->load_yuv(in_filename, yuv_in, in_height, in_width) == false)
   {
     return false;
   }
@@ -149,13 +193,12 @@ bool edit_yuv_420p12b(const char *in_filename, const char *out_filename, size_t 
   //printf("default roi (%d, %d, %d, %d)\n", roi.x, roi.y, roi.width, roi.height);
   int x, y, w, h;
   Mat yuv_out = yuv_in;
-  int op;
+  int key;
   do
   {
-    show_yuv_420p16b(yuv_out, in_height, in_width, "YUV editor");
-    op = waitKey(0);
-    //printf("intput %c\n", op);
-    switch (op)
+    ops->show_yuv(yuv_out, in_height, in_width, "YUV editor");
+    key = waitKey(0) & 0xfffff; // fix opencv bug
+    switch (key)
     {
     case 'i': /* zoom in */
       x = roi.x + roi.width / 20;
@@ -196,9 +239,13 @@ bool edit_yuv_420p12b(const char *in_filename, const char *out_filename, size_t 
     case 's':
       printf("save image with roi (%d, %d, %d, %d) to file %s\n", x, y, w, h, out_filename);
       yuv_out = yuv_out / (1 << (16 - 10));
-      save_yuv_420p10b(out_filename, yuv_out);
+      ops->save_yuv(out_filename, yuv_out);
     case 'q': /* quit */
       return true;
+    default:
+      printf("unknow key: %c (0x%x)\n", key, key);
+      continue;
+      break;
     }
 
     if (x < 0 || y < 0 || w <= 4 || h <= 4 || (x + w) >= in_width || (y + h) >= in_height)
@@ -208,10 +255,26 @@ bool edit_yuv_420p12b(const char *in_filename, const char *out_filename, size_t 
     }
     //printf("try to zoom in to roi (%d, %d, %d, %d)\n", x, y, w, h);
     roi = Rect(x, y, w, h);
-    zoom_yuv_420p16b(yuv_in, roi, yuv_out);
-  } while (op != 'q');
+    ops->zoom_yuv(yuv_in, roi, yuv_out);
+  } while (key != 'q');
 
   return true;
+}
+
+YUV_OPS *get_yuv_ops(const char *format)
+{
+  YUV_OPS *ops = NULL;
+
+  if (strcmp(format, "420sp") == 0)
+  {
+    ops = &yuv420sp_ops;
+  }
+  else if (strcmp(format, "420p") == 0)
+  {
+    ops = &yuv420p_ops;
+  }
+
+  return ops;
 }
 
 void show_help()
@@ -221,9 +284,9 @@ void show_help()
       "yuvedit - edit yuv file\n"
       "\n"
       "1. interactive mode\n"
-      "   yuvedit -i <input yuv filename> <outout yuv filename> [<image height> <image width>]\n"
+      "   yuvedit -i {420p|420sp} <input yuv filename> <outout yuv filename> [<image height> <image width>]\n"
       "2. batch mode\n"
-      "   yuvedit -b <input yuv filename> <outout yuv filename> <roi x> <roi y> <roi width> <roi height> [<image height> <image width>]\n"
+      "   yuvedit -b {420p|420sp} <input yuv filename> <outout yuv filename> <roi x> <roi y> <roi width> <roi height> [<image height> <image width>]\n"
       "\n";
   printf("%s\n", help);
 }
@@ -237,31 +300,38 @@ int main(int argc, char *argv[])
   }
   else
   {
+    YUV_OPS *ops = get_yuv_ops(argv[2]);
+    if (ops == NULL)
+    {
+      show_help();
+      return 0;
+    }
+
     if (strcmp(argv[1], "-i") == 0)
     {
-      if (argc == 6)
+      if (argc == 7)
       {
-        in_height = atoi(argv[4]);
-        in_width = atoi(argv[5]);
+        in_height = atoi(argv[5]);
+        in_width = atoi(argv[6]);
       }
-      if (edit_yuv_420p12b(argv[2], argv[3], in_height, in_width) == false)
+      if (edit_yuv_420_10b(argv[3], argv[4], in_height, in_width, &yuv420sp_ops) == false)
       {
         show_help();
       }
     }
     else if (strcmp(argv[1], "-b") == 0)
     {
-      if (argc < 8)
+      if (argc < 9)
       {
         show_help();
       }
-      Rect roi = Rect(atoi(argv[4]), atoi(argv[5]), atoi(argv[6]), atoi(argv[7]));
-      if (argc == 10)
+      Rect roi = Rect(atoi(argv[5]), atoi(argv[6]), atoi(argv[7]), atoi(argv[8]));
+      if (argc == 11)
       {
-        in_height = atoi(argv[8]);
-        in_width = atoi(argv[9]);
+        in_height = atoi(argv[9]);
+        in_width = atoi(argv[10]);
       }
-      if (edit_yuv_batch_420p12b(argv[2], argv[3], in_height, in_width, roi) == false)
+      if (edit_yuv_batch_420_10b(argv[3], argv[4], in_height, in_width, roi, &yuv420sp_ops) == false)
       {
         show_help();
       }
