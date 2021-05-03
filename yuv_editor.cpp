@@ -314,7 +314,7 @@ int main(int argc, char *argv[])
         in_height = atoi(argv[5]);
         in_width = atoi(argv[6]);
       }
-      if (edit_yuv_420_10b(argv[3], argv[4], in_height, in_width, &yuv420sp_ops) == false)
+      if (edit_yuv_420_10b(argv[3], argv[4], in_height, in_width, ops) == false)
       {
         show_help();
       }
@@ -331,7 +331,7 @@ int main(int argc, char *argv[])
         in_height = atoi(argv[9]);
         in_width = atoi(argv[10]);
       }
-      if (edit_yuv_batch_420_10b(argv[3], argv[4], in_height, in_width, roi, &yuv420sp_ops) == false)
+      if (edit_yuv_batch_420_10b(argv[3], argv[4], in_height, in_width, roi, ops) == false)
       {
         show_help();
       }
